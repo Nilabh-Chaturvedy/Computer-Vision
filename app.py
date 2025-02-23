@@ -12,6 +12,7 @@ from keras.layers import MaxPooling2D,GlobalAveragePooling2D
 from keras.layers import Flatten
 from keras.layers import Dropout
 from hyperopt import hp, fmin, tpe, STATUS_OK, Trials
+import pickle
 
 #Reading the Covid-19 Dataset
 train_data_path="C:/Users/nilch/Desktop/Computer Vision/X-ray images -Covid Prediction/Computer-Vision/Covid19-dataset/train"
@@ -89,14 +90,22 @@ callback = keras.callbacks.EarlyStopping(monitor='val_accuracy',patience=3)
 #print(f"Test Accuracy: {test_acc:.4f}")
 
 #HyperParameter Tuning using HyperOpt
-
+BEST_MODEL_PATH = "best_hyperopt_model.h5"
+best_accuracy = 0 
 
 
 #Define Objective Function
 
 def hyperparameter_tuning(params):
+    # Path to save the best model
+    global best_accuracy
+
     model=tf.keras.Sequential([base_model,                     
     GlobalAveragePooling2D(),
+    Conv2D(filters=params['units2'],kernel_size=(3,3),activation='relu',padding='same',input_shape=(224,224,3)),
+    Dropout(params['dropout2']),
+    MaxPooling2D(pool_size=(2,2),padding='same'),
+    Flatten(),
     Dense(units=params['units1'],activation=params['activation']),
     Dropout(params['dropout1']),
     Dense(units=3,activation='softmax')
@@ -105,13 +114,20 @@ def hyperparameter_tuning(params):
     history=model.fit(train_dataset,epochs=params['nb_epochs'],validation_data=test_dataset,callbacks=[callback],batch_size=params['batch_size'])
     test_loss, test_acc = model.evaluate(test_dataset)
     print(f"Test Accuracy: {test_acc:.4f}")
+    #saving the best model
+    if test_acc>best_accuracy:
+        best_accuracy=test_acc
+        model.save(BEST_MODEL_PATH) 
+        print(f"New best model saved with accuracy: {test_acc:.4f}")
+    
+    
     return {'loss':-test_acc,'status':STATUS_OK}
 
-
+#Search Space for Hyper-parameter tuning(to be added more hyperparameters)
 space = {  'units1': hp.choice('units1', [128,64]),
-
+            'units2': hp.choice('units2', [16,32]),
             'dropout1': hp.uniform('dropout1', .25,.75),
-
+            'dropout2': hp.uniform('dropout2', .25,.75),
             'nb_epochs' : hp.choice('nb_epochs', [10,20]),
             'optimizer': hp.choice('optimizer',['adam','rmsprop']),
             'activation': hp.choice('activation',['relu','tanh']),
@@ -122,3 +138,5 @@ trials = Trials()
 
 best_model=fmin(fn=hyperparameter_tuning,space=space,algo=tpe.suggest,max_evals=10,trials=trials)
 print(best_model)
+print(best_accuracy)
+#pickle.save_model(best_model,open('best_model.pkl','wb'))
